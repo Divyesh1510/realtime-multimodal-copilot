@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: realtime-copilot-backend
+    env: python
+    region: oregon
+    plan: free
+    dockerfilePath: backend/Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_TEXT_MODEL
+        value: qwen/qwen3.8-27b
+      - key: GROQ_WHISPER_MODEL
+        value: whisper-large-v3-turbo
+      - key: OPENROUTER_VISION_MODEL
+        value: openrouter/free
+      - key: OPENROUTER_TEXT_MODEL
+        value: openrouter/free
+      - key: SPEAKER_SILENCE_DEBOUNCE_SEC
+        value: 1.5

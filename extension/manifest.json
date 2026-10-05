@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "AI Real-Time Interview & Meeting Copilot",
+  "version": "1.0.0",
+  "description": "Zero-cost real-time multimodal voice and screen interview copilot with discreet floating HUD.",
+  "permissions": [
+    "activeTab",
+    "tabCapture",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "ws://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "ws://127.0.0.1:8000/*"
+  ],
+  "background": {
+    "service_worker": "scripts/background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "AI Interview Copilot"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["scripts/content.js"],
+      "css": ["scripts/overlay.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "commands": {
+    "toggle-hud": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Toggle Floating HUD Overlay"
+    },
+    "force-query": {
+      "suggested_key": {
+        "default": "Ctrl+Space",
+        "mac": "Command+Shift+Space"
+      },
+      "description": "Push-to-Query Instant AI Analysis"
+    }
+  }
+}
