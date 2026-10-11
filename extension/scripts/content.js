@@ -19,8 +19,17 @@
       <div class="hud-title">
         <span class="hud-status-dot offline" id="hud-status-dot"></span>
         <span>AI Copilot</span>
+        <select class="hud-mode-selector" id="hud-mode-select" title="Mode Selection">
+          <option value="quiz">🎯 Quiz / MCQ (1-line)</option>
+          <option value="code">💻 Coding & Explain</option>
+        </select>
       </div>
       <div class="hud-actions">
+        <div class="hud-opacity-control" title="Adjust Transparency">
+          <span>👁️</span>
+          <input type="range" id="hud-opacity-slider" class="hud-opacity-slider" min="0.2" max="1" step="0.05" value="0.92">
+        </div>
+        <button class="hud-btn" id="hud-toggle-screen" title="Share Screen / Quiz tab">🖥️ Screen</button>
         <button class="hud-btn" id="hud-toggle-mic">🎙️ Mic</button>
         <button class="hud-btn" id="hud-force-query" title="Ctrl+Space">⚡ Query</button>
         <button class="hud-btn" id="hud-minimize-btn">_</button>
@@ -28,17 +37,21 @@
     </div>
     <div class="hud-body" id="hud-body-content">
       <div class="hud-transcript-box" id="hud-transcript-stream">
-        <div style="color: #64748b; text-align: center; padding: 10px;">
-          Connect to gateway to stream audio...
+        <div style="color: #64748b; text-align: center; padding: 6px;">
+          Audio/Question transcripts stream here...
         </div>
       </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+        <span style="font-weight: 600; font-size: 10px; color: #a5b4fc; text-transform: uppercase;">Direct Answer / Solution:</span>
+        <button class="hud-copy-btn" id="hud-copy-btn">📋 Copy Answer</button>
+      </div>
       <div class="hud-solution-box" id="hud-solution-stream">
-        <span style="color: #64748b;">Hints & code solutions stream here in real time.</span>
+        <span style="color: #64748b;">Direct answers & code appear here automatically or on Ctrl+Space.</span>
       </div>
     </div>
     <div class="hud-footer">
       <span id="hud-status-text">Disconnected</span>
-      <span>Ctrl+Space to query</span>
+      <span>Ctrl+Space to analyze</span>
     </div>
   `;
   document.body.appendChild(hudContainer);
@@ -46,7 +59,11 @@
   const statusDot = document.getElementById("hud-status-dot");
   const statusText = document.getElementById("hud-status-text");
   const micBtn = document.getElementById("hud-toggle-mic");
+  const screenBtn = document.getElementById("hud-toggle-screen");
   const queryBtn = document.getElementById("hud-force-query");
+  const copyBtn = document.getElementById("hud-copy-btn");
+  const opacitySlider = document.getElementById("hud-opacity-slider");
+  const modeSelect = document.getElementById("hud-mode-select");
   const minimizeBtn = document.getElementById("hud-minimize-btn");
   const transcriptBox = document.getElementById("hud-transcript-stream");
   const solutionBox = document.getElementById("hud-solution-stream");
@@ -174,14 +191,98 @@
     }
   }
 
-  // 4. Force Query (Ctrl+Space)
+  // Opacity Slider Adjustment
+  opacitySlider.addEventListener("input", (e) => {
+    const val = e.target.value;
+    hudContainer.style.background = `rgba(10, 15, 30, ${val})`;
+    hudContainer.style.opacity = Math.max(0.4, Number(val) + 0.1);
+  });
+
+  // 1-Click Copy Answer
+  copyBtn.addEventListener("click", async () => {
+    const textToCopy = solutionBox.innerText.trim();
+    if (!textToCopy) return;
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      copyBtn.innerText = "✅ Copied!";
+      setTimeout(() => copyBtn.innerText = "📋 Copy Answer", 1500);
+    } catch (e) {
+      console.error("Clipboard copy failed:", e);
+    }
+  });
+
+  // 4. Screen Capture (For Quiz Tab / Coding Test)
+  let screenStream = null;
+  let screenVideo = null;
+  let screenInterval = null;
+
+  async function toggleScreen() {
+    if (screenStream) {
+      screenStream.getTracks().forEach(t => t.stop());
+      clearInterval(screenInterval);
+      screenStream = null;
+      screenBtn.classList.remove("active");
+      screenBtn.innerText = "🖥️ Screen";
+      return;
+    }
+
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 5 }
+      });
+      screenVideo = document.createElement("video");
+      screenVideo.srcObject = screenStream;
+      screenVideo.play();
+
+      screenBtn.classList.add("active");
+      screenBtn.innerText = "🔴 Screen Live";
+      connectGateway();
+
+      // Transmit screen keyframe periodically
+      screenInterval = setInterval(() => {
+        if (!screenVideo || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const canvas = document.createElement("canvas");
+        canvas.width = screenVideo.videoWidth || 1280;
+        canvas.height = screenVideo.videoHeight || 720;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+          const base64 = canvas.toDataURL("image/jpeg", 0.7);
+          ws.send(JSON.stringify({
+            type: "screen_keyframe",
+            image_base64: base64,
+            diff: 10
+          }));
+        }
+      }, 2500);
+
+      screenStream.getVideoTracks()[0].onended = () => {
+        toggleScreen();
+      };
+    } catch (err) {
+      console.warn("Screen share cancelled:", err);
+    }
+  }
+
+  screenBtn.addEventListener("click", toggleScreen);
+
+  // 5. Force Query (Ctrl+Space) with Mode Support
   function triggerForceQuery() {
     connectGateway();
     if (ws && ws.readyState === WebSocket.OPEN) {
-      statusText.innerText = "Analyzing screen context...";
+      statusText.innerText = "Analyzing question...";
+      const mode = modeSelect.value;
+      
+      let promptText = "";
+      if (mode === "quiz") {
+        promptText = "Look at the question/quiz on screen. Give the DIRECT, 1-LINE ANSWER or selected choice immediately with zero explanation.";
+      } else {
+        promptText = "Analyze current screen and code problem. Provide optimal algorithm pattern and concise code solution.";
+      }
+
       ws.send(JSON.stringify({
         type: "hotkey_trigger",
-        prompt: "Analyze the current screen state and questions asked. Provide optimal algorithmic pattern and solution."
+        prompt: promptText
       }));
     }
   }
@@ -217,7 +318,7 @@
   let isDragging = false, startX, startY, initialX, initialY;
 
   dragHeader.addEventListener("mousedown", (e) => {
-    if (e.target.tagName === "BUTTON") return;
+    if (e.target.tagName === "BUTTON" || e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
     isDragging = true;
     startX = e.clientX;
     startY = e.clientY;
